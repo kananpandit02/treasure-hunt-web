@@ -1,38 +1,62 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Treasure Hunt — QR Scanner</title>
 
     <style>
-      html,body,#root { height: 100%; margin: 0; font-family: system-ui; }
-      .app { min-height:100%; padding:20px; background:#f3f4f6;
-             display:flex; flex-direction:column; align-items:center; }
-      .card { width:100%; max-width:420px; background:#fff; padding:16px;
-              border-radius:14px; box-shadow:0 4px 20px rgba(0,0,0,0.1); margin-top:20px; }
-      .btn { width:100%; padding:12px; border-radius:10px; margin-top:10px;
-             font-weight:600; border:0; cursor:pointer; }
-      .btn-blue{ background:#2563eb; color:white; }
-      .btn-green{ background:#059669; color:white; }
-      .btn-yellow{ background:#d97706; color:white; }
-      .btn-red{ background:#dc2626; color:white; }
-      .muted { color:#6b7280; font-size:14px; }
-      .list-button { width:100%; text-align:left; background:#f8f8f8; padding:12px;
-                     border-radius:10px; border:1px solid #e5e7eb; margin-top:8px; }
-      video { width:100%; border-radius:12px; margin-top:10px; background:black; }
-      .row { display:flex; gap:10px; }
-      input { width:100%; padding:10px; border:1px solid #ccc;
-              border-radius:10px; margin-top:10px; }
+      html, body, #root {
+        height: 100%;
+        margin: 0;
+        font-family: system-ui;
+      }
+      .app {
+        min-height: 100%;
+        padding: 20px;
+        background: #f3f4f6;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .card {
+        width: 100%;
+        max-width: 420px;
+        background: #fff;
+        padding: 16px;
+        border-radius: 14px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        margin-top: 20px;
+      }
+      .btn {
+        width: 100%;
+        padding: 12px;
+        margin-top: 10px;
+        border-radius: 10px;
+        font-weight: 600;
+        border: none;
+        cursor: pointer;
+      }
+      .btn-blue { background: #2563eb; color: white; }
+      .btn-green { background: #059669; color: white; }
+      .btn-yellow { background: #d97706; color: white; }
+      .btn-red { background: #dc2626; color: white; }
+      .muted { color: #6b7280; font-size: 14px; }
+      video {
+        width: 100%;
+        border-radius: 12px;
+        margin-top: 10px;
+        background: black;
+      }
     </style>
 
     <!-- QR Scanner -->
-    <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
 
-    <!-- React -->
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+    <!-- React + Babel -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   </head>
 
   <body>
@@ -41,130 +65,105 @@
     <script type="text/babel">
       const { useState, useEffect, useRef } = React;
 
-      const STORAGE_KEY = "treasure_clues";
-
-      function loadClues() {
-        try {
-          const raw = localStorage.getItem(STORAGE_KEY);
-          return raw ? JSON.parse(raw) : [];
-        } catch {
-          return [];
-        }
-      }
-
-      function saveClues(list) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-      }
-
       function App() {
         const [screen, setScreen] = useState("home");
-        const [clues, setClues] = useState(loadClues());
-        const [selected, setSelected] = useState(null);
+        const [selectedClue, setSelectedClue] = useState(null);
+        const [clues, setClues] = useState(() =>
+          JSON.parse(localStorage.getItem("clues") || "[]")
+        );
+        const qrRef = useRef(null);
+        const scanner = useRef(null);
 
-        const scannerRef = useRef(null);
-        const qrRegionId = "qr-reader";
+        useEffect(() => {
+          localStorage.setItem("clues", JSON.stringify(clues));
+        }, [clues]);
 
-        useEffect(() => saveClues(clues), [clues]);
-
-        // CAMERA SCANNER ----------------------
         function startScanner() {
           setScreen("scanner");
 
           setTimeout(() => {
-            const scanner = new Html5Qrcode(qrRegionId);
-            scannerRef.current = scanner;
+            scanner.current = new Html5Qrcode("qr-box");
 
-            Html5Qrcode.getCameras().then(cams => {
-              if (!cams.length) {
-                alert("No camera found");
+            Html5Qrcode.getCameras().then((devices) => {
+              if (!devices || devices.length === 0) {
+                alert("No camera detected.");
                 return;
               }
 
-              scanner.start(
-                cams[0].id,
-                { fps: 10, qrbox: 250 },
-                decoded => {
+              const cameraId = devices[0].id;
+
+              scanner.current.start(
+                cameraId,
+                { fps: 10, qrbox: { width: 250, height: 250 } },
+                (decodeText) => {
                   stopScanner();
-                  handleScan(decoded);
+                  handleScan(decodeText);
                 }
               );
             });
-
-          }, 500);
+          }, 300);
         }
 
         function stopScanner() {
-          if (scannerRef.current) {
-            scannerRef.current.stop().then(() => {
-              scannerRef.current.clear();
-              scannerRef.current = null;
+          if (scanner.current) {
+            scanner.current.stop().then(() => {
+              scanner.current.clear();
+              scanner.current = null;
             });
           }
         }
 
-        // ON SCAN ---------------------------
-        function handleScan(value) {
-          let data = null;
-          try { data = JSON.parse(value); } catch {}
+        function handleScan(text) {
+          let json = null;
+          try {
+            json = JSON.parse(text);
+          } catch {}
 
-          let clue;
+          let clue = null;
 
-          // JSON QR
-          if (data && data.type === "video" && data.url) {
+          if (json && json.type === "video" && json.url) {
             clue = {
               id: Date.now(),
-              url: data.url,
-              transcript: data.transcript || "No transcript",
-              digit: data.digit ?? null
+              url: json.url,
+              transcript: json.transcript || "No transcript",
+              digit: json.digit ?? null
             };
-          }
-          // URL only QR
-          else if (value.startsWith("http")) {
+          } else if (text.startsWith("http")) {
             clue = {
               id: Date.now(),
-              url: value.trim(),
+              url: text,
               transcript: "Scanned video",
               digit: null
             };
-          }
-          else {
-            alert("Invalid QR format.\nUse URL or JSON.");
+          } else {
+            alert("Invalid QR format.");
             return;
           }
 
-          setClues(prev => [clue, ...prev]);
-          setSelected(clue);
+          setClues([clue, ...clues]);
+          setSelectedClue(clue);
           setScreen("video");
         }
 
-        // SKIP ------------------------------
-        function skipVideo() {
-          const url = "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
+        function skipDemo() {
+          stopScanner();
+          const url =
+            "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
+
           const clue = {
             id: Date.now(),
             url,
-            transcript: "Skipped demo video",
+            transcript: "Demo Video",
             digit: null
           };
-          setClues(prev => [clue, ...prev]);
-          setSelected(clue);
-          stopScanner();
+
+          setClues([clue, ...clues]);
+          setSelectedClue(clue);
           setScreen("video");
         }
 
-        // FINAL CODE CHECK ------------------
-        function checkFinal(input) {
-          const digits = clues.map(c => c.digit).filter(d => d !== null);
-          const correct = digits.join("");
-          if (input === correct) alert("🎉 Correct!");
-          else alert("❌ Wrong!");
-        }
-
-        // UI --------------------------------
         return (
           <div className="app">
-
-            {/* HOME */}
             {screen === "home" && (
               <div className="card">
                 <button className="btn btn-blue" onClick={startScanner}>
@@ -173,94 +172,77 @@
                 <button className="btn btn-green" onClick={() => setScreen("list")}>
                   Past Clues
                 </button>
-                <button className="btn btn-yellow" onClick={() => setScreen("final")}>
-                  Final Code
-                </button>
               </div>
             )}
 
-            {/* SCANNER */}
             {screen === "scanner" && (
               <div className="card">
                 <h2>Scan QR Code</h2>
-                <div id={qrRegionId} style={{ width:"100%", height:280, background:"black", borderRadius:10 }}></div>
+                <div
+                  id="qr-box"
+                  style={{
+                    width: "100%",
+                    height: "300px",
+                    background: "black",
+                    borderRadius: "10px"
+                  }}
+                ></div>
 
-                <button className="btn btn-yellow" onClick={skipVideo}>Skip</button>
-                <button className="btn btn-red" onClick={() => { stopScanner(); setScreen("home"); }}>
+                <button className="btn btn-yellow" onClick={skipDemo}>
+                  Skip
+                </button>
+                <button
+                  className="btn btn-red"
+                  onClick={() => {
+                    stopScanner();
+                    setScreen("home");
+                  }}
+                >
                   Close
                 </button>
               </div>
             )}
 
-            {/* VIDEO */}
-            {screen === "video" && selected && (
+            {screen === "video" && selectedClue && (
               <div className="card">
                 <h2>Video</h2>
                 <video controls autoPlay playsInline>
-                  <source src={selected.url} type="video/mp4" />
+                  <source src={selectedClue.url} type="video/mp4" />
                 </video>
+                <p className="muted">{selectedClue.transcript}</p>
 
-                <p className="muted">{selected.transcript}</p>
-                <button className="btn btn-green" onClick={() => setScreen("list")}>Back to Clues</button>
-                <button className="btn btn-red" onClick={() => setScreen("home")}>Home</button>
+                <button className="btn btn-green" onClick={() => setScreen("list")}>
+                  Back to Clues
+                </button>
+                <button className="btn btn-red" onClick={() => setScreen("home")}>
+                  Home
+                </button>
               </div>
             )}
 
-            {/* LIST */}
             {screen === "list" && (
               <div className="card">
                 <h2>Past Clues</h2>
 
-                {clues.map(c => (
-                  <button className="list-button" key={c.id} onClick={() => { setSelected(c); setScreen("detail"); }}>
-                    <strong>Clue</strong>
-                    <div className="muted">Digit: {c.digit ?? "None"}</div>
+                {clues.map((c) => (
+                  <button
+                    key={c.id}
+                    className="list-button"
+                    onClick={() => {
+                      setSelectedClue(c);
+                      setScreen("video");
+                    }}
+                  >
+                    🎥 {c.transcript}
                   </button>
                 ))}
 
-                <button className="btn btn-red" onClick={() => setScreen("home")}>Close</button>
+                <button className="btn btn-red" onClick={() => setScreen("home")}>
+                  Close
+                </button>
               </div>
             )}
-
-            {/* DETAIL */}
-            {screen === "detail" && selected && (
-              <div className="card">
-                <h2>Clue Detail</h2>
-                <p>{selected.transcript}</p>
-                <p className="muted">Digit: {selected.digit ?? "None"}</p>
-
-                <video controls>
-                  <source src={selected.url} type="video/mp4" />
-                </video>
-
-                <button className="btn btn-blue" onClick={() => setScreen("list")}>Back</button>
-                <button className="btn btn-red" onClick={() => setScreen("home")}>Home</button>
-              </div>
-            )}
-
-            {/* FINAL CODE */}
-            {screen === "final" && (
-              <div className="card">
-                <h2>Final Code</h2>
-
-                <Final digits={clues} onCheck={checkFinal} onClose={() => setScreen("home")} />
-              </div>
-            )}
-
           </div>
-        );
-      }
-
-      function Final({ digits, onCheck, onClose }) {
-        const [value, setValue] = React.useState("");
-
-        return (
-          <>
-            <input placeholder="Enter final digits" value={value} onChange={e => setValue(e.target.value)} />
-
-            <button className="btn btn-blue" onClick={() => onCheck(value)}>Check</button>
-            <button className="btn btn-red" onClick={onClose}>Close</button>
-          </>
         );
       }
 
