@@ -1,4 +1,4 @@
-<!doctype html>
+<!-- <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -335,3 +335,510 @@
   </script>
 </body>
 </html>
+ -->
+
+
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Treasure Hunt — Full App (Flashlight, QR Generator, Final Code)</title>
+
+  <style>
+    html,body,#root{height:100%;margin:0;font-family:system-ui,Arial;}
+    .app{min-height:100%;padding:16px;background:#f3f4f6;display:flex;flex-direction:column;align-items:center;}
+    .card{width:100%;max-width:720px;background:#fff;padding:14px;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,0.08);margin-top:14px}
+    .btn{width:100%;padding:12px;border-radius:10px;border:0;font-weight:700;margin-top:10px;cursor:pointer}
+    .btn-blue{background:#2563eb;color:#fff}.btn-green{background:#059669;color:#fff}.btn-yellow{background:#d97706;color:#fff}.btn-red{background:#dc2626;color:#fff}
+    input,select,textarea{width:100%;padding:10px;border-radius:8px;border:1px solid #e5e7eb;margin-top:10px;font-size:14px}
+    video{width:100%;border-radius:10px;background:#000;margin-top:10px}
+    .muted{color:#6b7280;font-size:14px}
+    .row{display:flex;gap:8px}
+    .small{font-size:13px;color:#6b7280}
+    .qr-preview{display:flex;gap:8px;align-items:center;margin-top:10px}
+    .qr-image{width:160px;height:160px;background:#fafafa;border:1px solid #eee;padding:6px;border-radius:6px}
+  </style>
+
+  <!-- html5-qrcode -->
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <!-- React + Babel -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    const STORAGE_KEY = "treasure_full_v1";
+    const MASTER_KEY = "treasure_master_clues_v1";
+
+    function load(key, fallback = []) {
+      try { return JSON.parse(localStorage.getItem(key) || "[]"); } catch { return fallback; }
+    }
+    function save(key, value) { localStorage.setItem(key, JSON.stringify(value)); }
+
+    function isUrl(text) {
+      try { new URL(text); return true; } catch { return false; }
+    }
+    function looksLikeVideo(url) {
+      if (!url) return false;
+      const ext = /\.(mp4|webm|ogg|mov|m3u8)(\?|$)/i;
+      if (ext.test(url)) return true;
+      return url.toLowerCase().includes('mp4') || url.toLowerCase().includes('video');
+    }
+    function tryParseJson(text) {
+      try { return JSON.parse(text); } catch {}
+      try { return JSON.parse(decodeURIComponent(text)); } catch {}
+      return null;
+    }
+
+    function App(){
+      // screens: home, scanner, startvideo, video, list, generator, final, openurl, detail
+      const [screen, setScreen] = useState("home");
+      const [clues, setClues] = useState(load(STORAGE_KEY));
+      const [masterClues, setMasterClues] = useState(load(MASTER_KEY));
+      const [selected, setSelected] = useState(null);
+      const [cameras, setCameras] = useState([]);
+      const [camId, setCamId] = useState(null);
+      const scannerRef = useRef(null);
+      const videoRef = useRef(null);
+      const mediaTrackRef = useRef(null); // for torch
+      const [torchOn, setTorchOn] = useState(false);
+      const [requiredClues, setRequiredClues] = useState(masterClues.length || 0);
+
+      useEffect(()=> save(STORAGE_KEY, clues), [clues]);
+      useEffect(()=> save(MASTER_KEY, masterClues), [masterClues]);
+
+      // scanner start
+      async function startScanner() {
+        setScreen("scanner");
+        setTimeout(async () => {
+          try {
+            const devices = await Html5Qrcode.getCameras();
+            setCameras(devices || []);
+            const prefer = (devices || []).find(d => /back|rear|environment/i.test(d.label)) || devices?.[0];
+            if (prefer) setCamId(prefer.id);
+
+            // Start the scanner
+            scannerRef.current = new Html5Qrcode("qr-box");
+            const startId = prefer ? prefer.id : (devices && devices[0] && devices[0].id);
+            if (!startId) { alert("No camera found"); return; }
+
+            // attempt to also get a media track for torch (separate getUserMedia)
+            try {
+              if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: startId } } });
+                const tracks = stream.getVideoTracks();
+                if (tracks && tracks.length) {
+                  mediaTrackRef.current = tracks[0];
+                } else {
+                  mediaTrackRef.current = null;
+                }
+              }
+            } catch(e) {
+              // ignore - torch will be disabled if not available
+              mediaTrackRef.current = null;
+            }
+
+            await scannerRef.current.start(
+              startId,
+              { fps: 10, qrbox: { width: 250, height: 250 } },
+              (decoded) => {
+                stopScanner();
+                handleDecoded(decoded);
+              },
+              (err) => { /* ignore per-frame errors */ }
+            );
+          } catch (err) {
+            console.error("Scanner start error", err);
+            alert("Camera failed: " + (err && err.message ? err.message : err));
+          }
+        }, 200);
+      }
+
+      async function switchCamera(newId) {
+        if (!scannerRef.current) return;
+        try {
+          await scannerRef.current.stop();
+          // also refresh media track for torch
+          try {
+            if (mediaTrackRef.current) {
+              try{ mediaTrackRef.current.stop(); }catch{}
+              mediaTrackRef.current = null;
+            }
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+              const s = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: newId } } });
+              const t = s.getVideoTracks();
+              mediaTrackRef.current = t && t.length ? t[0] : null;
+            }
+          } catch(e){ mediaTrackRef.current = null; }
+
+          await scannerRef.current.start(
+            newId,
+            { fps: 10, qrbox: { width: 250, height: 250 } },
+            (decoded) => { stopScanner(); handleDecoded(decoded); }
+          );
+          setCamId(newId);
+        } catch (e) {
+          console.error("Switch camera error", e);
+          alert("Could not switch camera");
+        }
+      }
+
+      function stopScanner() {
+        if (scannerRef.current) {
+          scannerRef.current.stop().then(()=>{ try{ scannerRef.current.clear(); }catch{} scannerRef.current = null; }).catch(()=>{ scannerRef.current = null; });
+        }
+        // stop any media track used for torch
+        try { if (mediaTrackRef.current) { mediaTrackRef.current.stop(); mediaTrackRef.current = null; } } catch {}
+        setTorchOn(false);
+      }
+
+      // toggle torch (works only when track supports)
+      async function toggleTorch() {
+        const track = mediaTrackRef.current;
+        if (!track) { alert("Torch not supported on this device/browser"); return; }
+        const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+        if (!capabilities.torch) { alert("Torch not supported"); return; }
+        try {
+          await track.applyConstraints({ advanced: [{ torch: !torchOn }] });
+          setTorchOn(!torchOn);
+        } catch (e) {
+          console.error("torch error", e);
+          alert("Could not toggle torch");
+        }
+      }
+
+      // handle decoded QR content
+      function handleDecoded(text) {
+        const parsed = tryParseJson(text);
+        if (parsed && (parsed.type === "video" || parsed.url)) {
+          const url = parsed.url || parsed.video || "";
+          const clue = { id: Date.now(), url, transcript: parsed.transcript || parsed.text || "No transcript", digit: parsed.digit ?? parsed.code ?? null, raw: text };
+          setClues(prev => [clue, ...prev]);
+          setSelected({ kind: "video", clue });
+          setScreen("startvideo");
+          return;
+        }
+
+        if (isUrl(text)) {
+          const url = text;
+          if (looksLikeVideo(url)) {
+            const clue = { id: Date.now(), url, transcript: "Scanned video", digit: null, raw: text };
+            setClues(prev => [clue, ...prev]);
+            setSelected({ kind: "video", clue });
+            setScreen("startvideo");
+            return;
+          }
+          // generic URL - open option
+          setSelected({ kind: "openurl", url, note: "Open this URL in a new tab" });
+          setScreen("openurl");
+          return;
+        }
+
+        // plain text
+        setSelected({ kind: "text", text });
+        setScreen("detail");
+      }
+
+      // tap-to-start video with sound (Option A flow)
+      function startVideoWithSound() {
+        setScreen("video");
+        setTimeout(()=> { try { if (videoRef.current) videoRef.current.play().catch(()=>{}); } catch(e){} }, 200);
+      }
+
+      // skip inside video
+      function skipInsideVideo() {
+        setScreen("list");
+      }
+
+      // generator: create master clues and QR link
+      const [gTranscript, setGTranscript] = useState("");
+      const [gDigit, setGDigit] = useState("");
+      const [gVideoUrl, setGVideoUrl] = useState("");
+      const [generatedQrUrl, setGeneratedQrUrl] = useState(null);
+
+      function createJsonForClue() {
+        const obj = { type: "video", url: gVideoUrl, transcript: gTranscript, digit: Number(gDigit) };
+        return JSON.stringify(obj);
+      }
+
+      function generateQrForClue() {
+        const json = createJsonForClue();
+        const encoded = encodeURIComponent(json);
+        // use api.qrserver to create QR
+        const qr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encoded}`;
+        setGeneratedQrUrl(qr);
+        // add to masterClues list
+        const newMaster = { id: Date.now(), url: gVideoUrl, transcript: gTranscript, digit: Number(gDigit), json };
+        setMasterClues(prev => [...prev, newMaster]);
+        setRequiredClues(prev => (prev || 0) + 1);
+        // clear form
+        setGTranscript(""); setGDigit(""); setGVideoUrl("");
+      }
+
+      // final code logic: final code is concatenation of masterClues digits in the same order they were created
+      function canOpenFinal() {
+        // count scanned digits present in clues
+        const scannedDigits = clues.map(c => (typeof c.digit === 'number' ? c.digit : null)).filter(d => d !== null);
+        return (requiredClues > 0) && (scannedDigits.length >= requiredClues);
+      }
+
+      function checkFinalCode(entered) {
+        // expected code built from masterClues (in creation order)
+        const digits = masterClues.map(m => m.digit).filter(d => d !== null && d !== undefined);
+        const expected = digits.join("");
+        if (entered === expected) { setScreen("final-success"); }
+        else { setScreen("final-fail"); }
+      }
+
+      // UI helpers
+      function clearAll() {
+        if(confirm("Clear all stored clues and master clues?")) {
+          setClues([]); setMasterClues([]); setRequiredClues(0); setSelected(null);
+          try{ localStorage.removeItem(STORAGE_KEY); localStorage.removeItem(MASTER_KEY); }catch{}
+        }
+      }
+
+      // render
+      return (
+        <div className="app">
+          {/* HOME */}
+          {screen === "home" && (
+            <div className="card">
+              <h2 style={{margin:0}}>Treasure Hunt — Full App</h2>
+              <p className="small muted">Scan JSON/video QR, generate JSON QRs, toggle torch (Android), and finalize code when all clues scanned.</p>
+
+              <div style={{display:'grid', gap:8}}>
+                <button className="btn btn-blue" onClick={startScanner}>Open Camera Scanner</button>
+                <button className="btn btn-green" onClick={()=>setScreen("generator")}>QR Generator (create master clues)</button>
+                <div style={{display:'flex', gap:8}}>
+                  <button className="btn btn-yellow" onClick={()=>setScreen("list")} style={{flex:1}}>Past Clues</button>
+                  <button className="btn btn-red" onClick={clearAll} style={{flex:1}}>Clear All</button>
+                </div>
+                <div style={{display:'flex', gap:8}}>
+                  <button className="btn btn-blue" onClick={()=>{
+                    if(canOpenFinal()) setScreen("final"); else alert("You haven't scanned enough digit-bearing clues yet.");
+                  }} style={{flex:1}}>Final Code</button>
+                  <button className="btn btn-yellow" onClick={()=>{
+                    // set requiredClues to masterClues length if not set
+                    if (masterClues.length) { setRequiredClues(masterClues.length); alert("Required clues set to master clues count: " + masterClues.length); } else alert("No master clues created yet");
+                  }} style={{flex:1}}>Set Required = Master Count</button>
+                </div>
+              </div>
+
+              <div style={{marginTop:10}} className="muted">Master clues: {masterClues.length} • Required to win: {requiredClues}</div>
+            </div>
+          )}
+
+          {/* SCANNER */}
+          {screen === "scanner" && (
+            <div className="card">
+              <h3 style={{margin:0}}>Scan QR Code</h3>
+              <p className="small muted">Allow camera permissions. Use selector to switch camera. Torch works if supported (Android).</p>
+
+              {cameras.length > 0 && (
+                <select value={camId || ""} onChange={(e)=>switchCamera(e.target.value)}>
+                  {cameras.map(c => <option key={c.id} value={c.id}>{c.label || c.id}</option>)}
+                </select>
+              )}
+
+              <div id="qr-box" style={{width:"100%",height:320,background:"#000",borderRadius:10,marginTop:10}}></div>
+
+              <div style={{display:'flex',gap:8, marginTop:10}}>
+                <button className="btn btn-green" onClick={() => {
+                  // toggle torch if available
+                  toggleTorch();
+                }} style={{flex:1}}>Toggle Torch</button>
+
+                <button className="btn btn-red" onClick={() => { stopScanner(); setScreen("home"); }} style={{flex:1}}>Close</button>
+              </div>
+            </div>
+          )}
+
+          {/* START VIDEO */}
+          {screen === "startvideo" && selected && selected.kind === "video" && (
+            <div className="card">
+              <h3 style={{margin:0}}>Ready to Play</h3>
+              <p className="small muted">{selected.clue?.transcript || selected.clue?.url}</p>
+
+              <div style={{display:'flex',gap:8}}>
+                <button className="btn btn-blue" onClick={startVideoWithSound} style={{flex:1}}>▶ Start Video with Sound</button>
+                <button className="btn btn-red" onClick={()=>setScreen("home")} style={{flex:1}}>Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {/* VIDEO */}
+          {screen === "video" && selected && selected.kind === "video" && (
+            <div className="card">
+              <h3 style={{margin:0}}>Clue Video</h3>
+              <p className="small muted">{selected.clue?.transcript || ""}</p>
+
+              <video ref={videoRef} controls playsInline>
+                <source src={selected.clue.url} type="video/mp4" />
+                Your browser does not support this video.
+              </video>
+
+              <div style={{display:'flex',gap:8,marginTop:10}}>
+                <button className="btn btn-yellow" onClick={skipInsideVideo} style={{flex:1}}>Skip / Continue</button>
+                <button className="btn btn-green" onClick={()=>setScreen("list")} style={{flex:1}}>Back to Clues</button>
+              </div>
+            </div>
+          )}
+
+          {/* OPEN URL */}
+          {screen === "openurl" && selected && selected.kind === "openurl" && (
+            <div className="card">
+              <h3 style={{margin:0}}>Open Link</h3>
+              <div style={{wordBreak:'break-all'}}>{selected.url}</div>
+              <div style={{display:'flex',gap:8,marginTop:10}}>
+                <button className="btn btn-blue" onClick={()=>{ window.open(selected.url, "_blank"); setScreen("home"); }} style={{flex:1}}>Open in new tab</button>
+                <button className="btn btn-red" onClick={()=>{ navigator.clipboard?.writeText(selected.url).then(()=>alert("Copied")) }} style={{flex:1}}>Copy</button>
+              </div>
+            </div>
+          )}
+
+          {/* DETAIL (plain text) */}
+          {screen === "detail" && selected && selected.kind === "text" && (
+            <div className="card">
+              <h3 style={{margin:0}}>Scanned Text</h3>
+              <pre style={{whiteSpace:'pre-wrap'}}>{selected.text}</pre>
+              <div style={{display:'flex',gap:8,marginTop:10}}>
+                <button className="btn btn-blue" onClick={()=>{ navigator.clipboard?.writeText(selected.text).then(()=>alert("Copied")) }} style={{flex:1}}>Copy</button>
+                <button className="btn btn-red" onClick={()=>setScreen("home")} style={{flex:1}}>Close</button>
+              </div>
+            </div>
+          )}
+
+          {/* PAST CLUES */}
+          {screen === "list" && (
+            <div className="card">
+              <h3 style={{margin:0}}>Past Clues</h3>
+              <p className="small muted">Saved locally in device storage.</p>
+
+              {clues.length === 0 && <p className="muted">No clues yet.</p>}
+              {clues.map(c => (
+                <div key={c.id} style={{marginTop:10}}>
+                  <button className="btn" style={{textAlign:'left',background:'#f8fafc'}} onClick={() => { setSelected({ kind: "video", clue: c }); setScreen("startvideo"); }}>
+                    <div style={{display:'flex',justifyContent:'space-between'}}>
+                      <div style={{fontWeight:700}}>{c.transcript || c.url}</div>
+                      <div className="muted">{c.digit !== null && c.digit !== undefined ? `Digit: ${c.digit}` : ""}</div>
+                    </div>
+                  </button>
+                </div>
+              ))}
+
+              <div style={{display:'flex',gap:8,marginTop:12}}>
+                <button className="btn btn-blue" onClick={()=>setScreen("home")} style={{flex:1}}>Close</button>
+                <button className="btn btn-red" onClick={() => { if(confirm("Clear saved clues?")) { setClues([]); setSelected(null); } }} style={{flex:1}}>Clear</button>
+              </div>
+            </div>
+          )}
+
+          {/* GENERATOR */}
+          {screen === "generator" && (
+            <div className="card">
+              <h3 style={{margin:0}}>JSON QR Generator</h3>
+              <p className="small muted">Create a JSON QR for a clue (type: video). The QR image is provided via api.qrserver.com — you can download and print/hide it.</p>
+
+              <input placeholder="Transcript (clue text)" value={gTranscript} onChange={e=>setGTranscript(e.target.value)} />
+              <input placeholder="Digit (0-9) - used in final code" value={gDigit} onChange={e=>setGDigit(e.target.value)} />
+              <input placeholder="Video URL (https://... .mp4 recommended)" value={gVideoUrl} onChange={e=>setGVideoUrl(e.target.value)} />
+
+              <div style={{display:'flex',gap:8}}>
+                <button className="btn btn-blue" onClick={generateQrForClue} style={{flex:1}}>Generate QR & Add to Master</button>
+                <button className="btn btn-red" onClick={()=>setScreen("home")} style={{flex:1}}>Done</button>
+              </div>
+
+              {generatedQrUrl && (
+                <div className="qr-preview">
+                  <div className="qr-image"><img src={generatedQrUrl} alt="qr" style={{width:'100%',height:'100%'}} /></div>
+                  <div style={{flex:1}}>
+                    <div className="small muted">Right-click → Save image or long-press to download on phone</div>
+                    <a className="small" href={generatedQrUrl} target="_blank" rel="noreferrer">Open QR image</a>
+                  </div>
+                </div>
+              )}
+
+              <div style={{marginTop:12}} className="muted">Master clues count: {masterClues.length}. Required clues: {requiredClues}</div>
+
+              {masterClues.length>0 && (
+                <div style={{marginTop:10}}>
+                  <h4 style={{margin:0}}>Master Clues (order defines final code)</h4>
+                  {masterClues.map(m => (
+                    <div key={m.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:8,padding:8,background:'#fbfbff',borderRadius:8}}>
+                      <div>
+                        <div style={{fontWeight:700}}>{m.transcript}</div>
+                        <div className="small muted">{m.url}</div>
+                      </div>
+                      <div className="muted">Digit: {m.digit}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* FINAL CODE */}
+          {screen === "final" && (
+            <div className="card">
+              <h3 style={{margin:0}}>Enter Final Code</h3>
+              <p className="small muted">You must have scanned all required digit-bearing clues ({requiredClues}). Final code = digits of master clues in creation order.</p>
+
+              <FinalInput masterClues={masterClues} requiredClues={requiredClues} onCheck={checkFinalCode} onCancel={()=>setScreen("home")} />
+            </div>
+          )}
+
+          {/* final success */}
+          {screen === "final-success" && (
+            <div className="card">
+              <h2 style={{margin:0}}>🎉 Treasure Unlocked!</h2>
+              <p className="small muted">You entered correct code.</p>
+              <button className="btn btn-green" onClick={()=>setScreen("home")}>Finish</button>
+            </div>
+          )}
+
+          {/* final fail */}
+          {screen === "final-fail" && (
+            <div className="card">
+              <h2 style={{margin:0}}>❌ Wrong Code</h2>
+              <p className="small muted">That's not the right combination.</p>
+              <div style={{display:'flex',gap:8}}>
+                <button className="btn btn-blue" onClick={()=>setScreen("final")}>Try Again</button>
+                <button className="btn btn-red" onClick={()=>setScreen("home")}>Cancel</button>
+              </div>
+            </div>
+          )}
+
+        </div>
+      );
+    }
+
+    function FinalInput({ masterClues, requiredClues, onCheck, onCancel }) {
+      const [value, setValue] = useState("");
+      // expected is digits concatenation of masterClues
+      const expected = masterClues.map(m => m.digit ?? "").join("");
+      return (
+        <div>
+          <input placeholder={"Enter final code ("+requiredClues+" digits)"} value={value} onChange={e=>setValue(e.target.value)} />
+          <div style={{display:'flex',gap:8,marginTop:10}}>
+            <button className="btn btn-blue" onClick={()=>onCheck(value)} style={{flex:1}}>Check</button>
+            <button className="btn btn-red" onClick={onCancel} style={{flex:1}}>Cancel</button>
+          </div>
+          <div style={{marginTop:8}} className="small muted">Expected (debug): {expected}</div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+  </script>
+</body>
+</html>
+
