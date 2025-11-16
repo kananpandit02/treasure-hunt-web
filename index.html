@@ -30,13 +30,16 @@
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
 
-    const STORAGE_KEY = "treasure_hunt_clues_sound";
+    const STORAGE_KEY = "treasure_clues_final";
 
     function loadClues() {
       try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); }
       catch { return []; }
     }
-    function saveClues(list) { localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); }
+
+    function saveClues(clues) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(clues));
+    }
 
     function App() {
       const [screen, setScreen] = useState("home");
@@ -46,115 +49,116 @@
       const [cameras, setCameras] = useState([]);
       const [camId, setCamId] = useState(null);
 
-      const scanner = useRef(null);
+      const scannerRef = useRef(null);
       const videoRef = useRef(null);
 
       useEffect(() => saveClues(clues), [clues]);
 
-      // Start Camera
+      // Start Camera Scanner
       async function startScanner() {
         setScreen("scanner");
 
         setTimeout(async () => {
           try {
-            const camList = await Html5Qrcode.getCameras();
-            setCameras(camList);
+            const devices = await Html5Qrcode.getCameras();
+            setCameras(devices);
+
             const backCam =
-              camList.find(c => /back|rear|environment/i.test(c.label)) || camList[0];
+              devices.find(c => /back|rear|environment/i.test(c.label)) || devices[0];
+
             setCamId(backCam.id);
 
-            scanner.current = new Html5Qrcode("qr-box");
+            scannerRef.current = new Html5Qrcode("qr-box");
 
-            await scanner.current.start(
+            await scannerRef.current.start(
               backCam.id,
               { fps: 10, qrbox: { width: 250, height: 250 } },
-              (text) => {
+              (decoded) => {
                 stopScanner();
-                onScan(text);
+                handleScan(decoded);
               }
             );
-          } catch (err) {
-            alert("Camera Error: " + err);
+          } catch (e) {
+            alert("Camera failed: " + e);
           }
-        }, 300);
+        }, 400);
       }
 
       async function switchCamera(id) {
-        if (!scanner.current) return;
+        if (!scannerRef.current) return;
 
-        await scanner.current.stop();
-        await scanner.current.start(
+        await scannerRef.current.stop();
+        await scannerRef.current.start(
           id,
           { fps: 10, qrbox: { width: 250, height: 250 } },
-          (text) => {
+          (decoded) => {
             stopScanner();
-            onScan(text);
+            handleScan(decoded);
           }
         );
         setCamId(id);
       }
 
       function stopScanner() {
-        if (scanner.current) {
-          scanner.current.stop().then(() => {
-            scanner.current.clear();
-            scanner.current = null;
+        if (scannerRef.current) {
+          scannerRef.current.stop().then(() => {
+            scannerRef.current.clear();
+            scannerRef.current = null;
           });
         }
       }
 
-      // QR Decoded
-      function onScan(text) {
-        let json = null;
-        try { json = JSON.parse(text); } catch {}
+      // Handle QR Scan
+      function handleScan(text) {
+        let d = null;
+        try { d = JSON.parse(text); } catch {}
 
         let clue;
 
-        if (json && json.type === "video") {
+        if (d && d.type === "video") {
           clue = {
             id: Date.now(),
-            url: json.url,
-            transcript: json.transcript || "No transcript",
-            digit: json.digit ?? null
+            url: d.url,
+            transcript: d.transcript || "No transcript",
+            digit: d.digit ?? null,
           };
         } else if (text.startsWith("http")) {
           clue = {
             id: Date.now(),
             url: text,
             transcript: "Scanned video",
-            digit: null
+            digit: null,
           };
         } else {
-          alert("Invalid QR format.");
+          alert("Invalid QR: must contain a video URL.");
           return;
         }
 
         setClues([clue, ...clues]);
         setSelected(clue);
-        setScreen("startvideo"); // <-- Go to tap-to-start screen
+        setScreen("startvideo"); // OPTION B SCREEN
       }
 
-      // DEMO VIDEO
+      // Demo
       function playDemo() {
         const clue = {
           id: Date.now(),
           url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
           transcript: "Demo video",
-          digit: null
+          digit: null,
         };
         setClues([clue, ...clues]);
         setSelected(clue);
         setScreen("startvideo");
       }
 
-      // Start video WITH SOUND (Option B)
+      // Start video with SOUND
       function startVideoWithSound() {
         setScreen("video");
         setTimeout(() => {
-          if (videoRef.current) {
+          if (videoRef.current)
             videoRef.current.play().catch(() => {});
-          }
-        }, 200);
+        }, 300);
       }
 
       return (
@@ -164,18 +168,9 @@
           {screen === "home" && (
             <div className="card">
               <h2>Treasure Hunt</h2>
-
-              <button className="btn btn-blue" onClick={startScanner}>
-                Open Camera Scanner
-              </button>
-
-              <button className="btn btn-green" onClick={() => setScreen("list")}>
-                Past Clues
-              </button>
-
-              <button className="btn btn-yellow" onClick={playDemo}>
-                Play Demo
-              </button>
+              <button className="btn btn-blue" onClick={startScanner}>Open Camera Scanner</button>
+              <button className="btn btn-green" onClick={() => setScreen("list")}>Past Clues</button>
+              <button className="btn btn-yellow" onClick={playDemo}>Play Demo</button>
             </div>
           )}
 
@@ -186,26 +181,34 @@
 
               {cameras.length > 0 && (
                 <select value={camId} onChange={(e) => switchCamera(e.target.value)}>
-                  {cameras.map(cam => (
-                    <option key={cam.id} value={cam.id}>{cam.label}</option>
+                  {cameras.map(c => (
+                    <option key={c.id} value={c.id}>{c.label}</option>
                   ))}
                 </select>
               )}
 
-              <div id="qr-box"
-                   style="width:100%;height:300px;background:black;border-radius:10px;margin-top:10px">
-              </div>
+              <div
+                id="qr-box"
+                style={{
+                  width: "100%",
+                  height: "300px",
+                  background: "black",
+                  borderRadius: "10px",
+                  marginTop: "10px"
+                }}
+              ></div>
 
-              <button className="btn btn-red" onClick={() => { stopScanner(); setScreen("home"); }}>
+              <button className="btn btn-red"
+                onClick={() => { stopScanner(); setScreen("home"); }}>
                 Close
               </button>
             </div>
           )}
 
-          {/* START VIDEO SCREEN (Option B) */}
+          {/* TAP-TO-START VIDEO */}
           {screen === "startvideo" && selected && (
             <div className="card">
-              <h3>Ready to Play</h3>
+              <h3>Ready?</h3>
               <p className="muted">{selected.transcript}</p>
 
               <button className="btn btn-blue" onClick={startVideoWithSound}>
@@ -223,42 +226,31 @@
             <div className="card">
               <h3>Clue Video</h3>
 
-              <video ref={videoRef} controls playsinline>
+              <video ref={videoRef} controls playsInline>
                 <source src={selected.url} type="video/mp4" />
               </video>
 
-              <button className="btn btn-yellow" onClick={() => setScreen("list")}>
-                Skip / Continue
-              </button>
-
-              <button className="btn btn-green" onClick={() => setScreen("list")}>
-                Back to Clues
-              </button>
-
-              <button className="btn btn-red" onClick={() => setScreen("home")}>
-                Home
-              </button>
+              <button className="btn btn-yellow" onClick={() => setScreen("list")}>Skip / Continue</button>
+              <button className="btn btn-green" onClick={() => setScreen("list")}>Back to Clues</button>
+              <button className="btn btn-red" onClick={() => setScreen("home")}>Home</button>
             </div>
           )}
 
-          {/* PAST CLUES */}
+          {/* LIST */}
           {screen === "list" && (
             <div className="card">
               <h3>Past Clues</h3>
 
               {clues.map(c => (
-                <button key={c.id} className="btn" style={{background:"#f8fafc"}}
+                <button key={c.id} className="btn" style={{ background:"#f8fafc" }}
                   onClick={() => { setSelected(c); setScreen("startvideo"); }}>
                   🎥 {c.transcript}
                 </button>
               ))}
 
-              <button className="btn btn-red" onClick={() => setScreen("home")}>
-                Close
-              </button>
+              <button className="btn btn-red" onClick={() => setScreen("home")}>Close</button>
             </div>
           )}
-
         </div>
       );
     }
