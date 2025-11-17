@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Treasure Hunt Admin</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <!-- Authentication Section -->
+    <div id="auth-section" class="container">
+        <h1>Admin Login</h1>
+        <form id="login-form">
+            <input type="email" id="login-email" placeholder="Email" required>
+            <input type="password" id="login-password" placeholder="Password" required>
+            <button type="submit">Login</button>
+        </form>
+        <p id="auth-error" class="error-message"></p>
+    </div>
+
+    <!-- Main Admin Dashboard -->
+    <div id="admin-dashboard" class="container hidden">
+        <header>
+            <h1>Admin Dashboard</h1>
+            <button id="logout-button">Logout</button>
+        </header>
+
+        <!-- Team Management -->
+        <section id="team-management">
+            <h2>Team Management</h2>
+            <form id="create-team-form">
+                <input type="text" id="team-name" placeholder="New Team Name" required>
+                <button type="submit">Create Team</button>
+            </form>
+            <button id="export-csv-button">Export Teams to CSV</button>
+            <div id="teams-list">
+                <!-- Teams will be dynamically loaded here -->
+            </div>
+        </section>
+
+        <!-- Clue Management -->
+        <section id="clue-management">
+            <h2>Clue Management</h2>
+            <form id="create-clue-form">
+                <input type="number" id="clue-order" placeholder="Clue Order" required>
+                <select id="clue-type" required>
+                    <option value="text">Text</option>
+                    <option value="video">Video</option>
+                    <option value="json">JSON</option>
+                </select>
+                <textarea id="clue-transcript" placeholder="Clue Transcript/Text" required></textarea>
+                <input type="url" id="clue-url" placeholder="Video/Image URL (optional)">
+                <input type="text" id="clue-answer" placeholder="Answer" required>
+                <input type="number" id="clue-digit" placeholder="Final Code Digit" required>
+                <button type="submit">Create Clue</button>
+            </form>
+            <div id="clues-list">
+                <!-- Clues will be dynamically loaded here -->
+            </div>
+        </section>
+
+        <!-- Leaderboard -->
+        <section id="leaderboard">
+            <h2>Leaderboard</h2>
+            <div id="leaderboard-content">
+                <!-- Leaderboard will be dynamically loaded here -->
+            </div>
+        </section>
+    </div>
+
+    <!-- QR Code Modal -->
+    <div id="qr-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h3 id="qr-modal-title">QR Code</h3>
+            <div id="qr-code"></div>
+            <a id="qr-download-link" download="qrcode.png">Download QR Code</a>
+        </div>
+    </div>
+
+    <!-- Team Progress Modal -->
+    <div id="progress-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h3 id="progress-modal-title">Team Progress</h3>
+            <div id="progress-details">
+                 <!-- Progress details will be dynamically loaded here -->
+            </div>
+        </div>
+    </div>
+
+
+    <script type="module" src="supabase.js"></script>
+    <script type="module" src="admin.js"></script>
+</body>
+</html>

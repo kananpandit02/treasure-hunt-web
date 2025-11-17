@@ -1,0 +1,154 @@
+/* General Body Styles */
+body {
+    font-family: 'Orbitron', sans-serif;
+    background-color: #0d0d2b;
+    color: #00ff00;
+    margin: 0;
+    padding: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+}
+
+.container {
+    background-color: #1a1a3a;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 0 20px #00ff00;
+    width: 90%;
+    max-width: 800px;
+    margin-bottom: 20px;
+}
+
+/* Header Styles */
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+h1, h2, h3 {
+    text-shadow: 0 0 10px #00ff00;
+}
+
+/* Form Styles */
+form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+input, textarea, select {
+    background-color: #0d0d2b;
+    color: #00ff00;
+    border: 1px solid #00ff00;
+    padding: 10px;
+    border-radius: 5px;
+    font-family: 'Orbitron', sans-serif;
+}
+
+input::placeholder, textarea::placeholder {
+    color: #008000;
+}
+
+/* Button Styles */
+button {
+    background-color: #00ff00;
+    color: #0d0d2b;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: bold;
+    text-transform: uppercase;
+    transition: background-color 0.3s, box-shadow 0.3s;
+}
+
+button:hover {
+    background-color: #008000;
+    box-shadow: 0 0 15px #00ff00;
+}
+
+/* Sections */
+section {
+    margin-bottom: 30px;
+}
+
+/* Lists (Teams and Clues) */
+#teams-list, #clues-list, #leaderboard-content {
+    margin-top: 20px;
+}
+
+.list-item {
+    background-color: #0d0d2b;
+    padding: 15px;
+    border: 1px solid #00ff00;
+    border-radius: 5px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Modal Styles */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background-color: #1a1a3a;
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 0 30px #00ff00;
+    text-align: center;
+    position: relative;
+}
+
+.close-button {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    font-size: 24px;
+    cursor: pointer;
+}
+
+#qr-code {
+    margin: 20px 0;
+}
+
+/* Utility Classes */
+.hidden {
+    display: none;
+}
+
+.error-message {
+    color: #ff0000;
+    text-shadow: 0 0 10px #ff0000;
+}
+
+/* Responsive Design */
+@media (max-width: 600px) {
+    body {
+        padding: 10px;
+    }
+
+    .container {
+        padding: 15px;
+    }
+
+    header {
+        flex-direction: column;
+    }
+}

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Treasure Hunt</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <!-- Player Login -->
+    <div id="player-login" class="container">
+        <h1>Player Login</h1>
+        <p>Scan the QR code provided by the admin to log in.</p>
+        <button id="scan-login-qr-button">Scan Login QR</button>
+        <div id="login-qr-scanner" class="hidden">
+             <div id="qr-reader-login"></div>
+        </div>
+    </div>
+
+    <!-- Player Dashboard -->
+    <div id="player-dashboard" class="container hidden">
+        <header>
+            <h1 id="team-name-display">Team Name</h1>
+            <p>Progress: <span id="progress-count">0</span> / <span id="total-clues">0</span></p>
+        </header>
+
+        <main id="clue-section">
+            <h2 id="clue-order-display">Clue #1</h2>
+            <div id="clue-content">
+                <!-- Clue text, video, or JSON will be displayed here -->
+            </div>
+            <form id="answer-form">
+                <input type="text" id="answer-input" placeholder="Your Answer" required>
+                <button type="submit">Submit Answer</button>
+            </form>
+            <p id="feedback-message"></p>
+        </main>
+
+        <button id="scan-clue-qr-button">Scan Next Clue</button>
+         <div id="clue-qr-scanner" class="hidden">
+             <div id="qr-reader-clue"></div>
+        </div>
+    </div>
+
+    <!-- Game Over Section -->
+    <div id="game-over-section" class="container hidden">
+        <h1>Congratulations!</h1>
+        <p>You have completed the treasure hunt.</p>
+        <p>Your final code is:</p>
+        <h2 id="final-code"></h2>
+    </div>
+
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script type="module" src="supabase.js"></script>
+    <script type="module" src="player.js"></script>
+    <script type="module" src="scanner.js"></script>
+</body>
+</html>
